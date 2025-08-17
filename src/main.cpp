@@ -66,10 +66,10 @@ int main() {
     split_data(X_all, y_all, X_train, y_train, X_test, y_test);
 
     MultiLayerPerceptron mlp({
+        Layer(512, ActivationFunction::RELU),
         Layer(256, ActivationFunction::RELU),
         Layer(128, ActivationFunction::RELU),
         Layer(64, ActivationFunction::RELU),
-        Layer(32, ActivationFunction::RELU),
         Layer(26, ActivationFunction::SOFTMAX)
     });
     mlp.compile(LossFunction::CCE);
@@ -77,7 +77,7 @@ int main() {
     //training time0
     double t = omp_get_wtime();
 
-    mlp.fit(X_train, y_train, 100, 0.01, 512);
+    mlp.fit(X_train, y_train, 1, 0.01, 512);
 
     t = omp_get_wtime() - t;
     std::cout << "Tempo de treinamento: " << t << " segundos\n";
