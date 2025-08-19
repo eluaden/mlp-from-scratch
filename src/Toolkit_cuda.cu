@@ -1,39 +1,131 @@
 #include "Toolkit.h"
+#include <cuda_runtime.h>
+#include <cublas_v2.h>
+
+#define CUDA_CHECK(x) do { cudaError_t err = x; if(err != cudaSuccess) { \
+    std::cerr << "CUDA error: " << cudaGetErrorString(err) << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+    exit(EXIT_FAILURE); \
+} } while(0)
+
+#define CUBLAS_CHECK(x) do { cublasStatus_t status = x; if(status != CUBLAS_STATUS_SUCCESS) { \
+    std::cerr << "cuBLAS error at " << __FILE__ << ":" << __LINE__ << std::endl; \
+    exit(EXIT_FAILURE); \
+} } while(0)
+
+// transforms a 2D matrix in col-major order to a 1D vector
+static std::vector<double> flatten_col_major(const std::vector<std::vector<double>>& matrix) 
+{
+    if (matrix.empty()) 
+    {
+        throw std::invalid_argument("Input matrix cannot be empty.");
+    }
+
+    int rows = matrix.size();
+    int cols = matrix[0].size();
+    std::vector<double> flat(rows * cols);
+
+    for (int j = 0; j < cols; ++j) 
+    {
+        for (int i = 0; i < rows; ++i) 
+        {
+            flat[j * rows + i] = matrix[i][j];
+        }
+    }
+    return flat;
+}
+
+// transforms a col-major 1D vector to a 2D row-major matrix
+static std::vector<std::vector<double>> reshape_to_2d(const std::vector<double>& flat, int rows, int cols) 
+{
+    std::vector<std::vector<double>> matrix(rows, std::vector<double>(cols, 0.0));
+    for (int j = 0; j < cols; ++j)
+        for (int i = 0; i < rows; ++i)
+            matrix[i][j] = flat[j * rows + i]; 
+    return matrix;
+}
 
 namespace tk {
 
+// --- Persistent GPU buffers ---
+static double* dA = nullptr;
+static double* dB = nullptr;
+static double* dC = nullptr;
+static size_t dA_capacity = 0;
+static size_t dB_capacity = 0;
+static size_t dC_capacity = 0;
+
+// --- Persistent cuBLAS handle ---
+static cublasHandle_t handle;
+static bool handle_initialized = false;
+
+static void ensure_capacity(double** d_ptr, size_t& capacity, size_t needed) {
+    if (needed > capacity) {
+        if (*d_ptr != nullptr) {
+            CUDA_CHECK(cudaFree(*d_ptr));
+        }
+        CUDA_CHECK(cudaMalloc((void**)d_ptr, needed * sizeof(double)));
+        capacity = needed;
+    }
+}
+
 std::vector<std::vector<double>> matmul(std::vector<std::vector<double>> a, std::vector<std::vector<double>> b) 
 {
-    if (a.empty() || b.empty()) 
-    {
+
+    if (a.empty() || b.empty()) {
         throw std::invalid_argument("Input matrices cannot be empty.");
     }
-    
-    int a_rows = a.size();
-    int a_cols = a[0].size();
-    int b_rows = b.size();
-    int b_cols = b[0].size();
 
-    if (a_cols != b_rows) 
-    {
+    const int a_rows = (int)a.size();
+    const int a_cols = (int)a[0].size();
+    const int b_rows = (int)b.size();
+    const int b_cols = (int)b[0].size();
+
+    if (a_cols != b_rows) {
         throw std::invalid_argument("Number of columns in the first matrix must match the number of rows in the second matrix.");
     }
 
-    std::vector<std::vector<double>> result(a_rows, std::vector<double>(b_cols, 0.0));
+    std::vector<double> a_flat = flatten_col_major(a);
+    std::vector<double> b_flat = flatten_col_major(b);
+    std::vector<double> c_flat(a_rows * b_cols, 0.0);
 
-    for (int i = 0; i < a_rows; ++i) 
-    {
-        for (int j = 0; j < b_cols; ++j) 
-        {
-            for (int k = 0; k < a_cols; ++k) 
-            {
-                result[i][j] += a[i][k] * b[k][j];
-            }
-        }
+    if (!handle_initialized) {
+        CUBLAS_CHECK(cublasCreate(&handle));
+        handle_initialized = true;
     }
 
-    return result;
+    ensure_capacity(&dA, dA_capacity, a_flat.size());
+    ensure_capacity(&dB, dB_capacity, b_flat.size());
+    ensure_capacity(&dC, dC_capacity, c_flat.size());
 
+    CUDA_CHECK(cudaMemcpy(dA, a_flat.data(), a_flat.size() * sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(dB, b_flat.data(), b_flat.size() * sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemset(dC, 0, c_flat.size() * sizeof(double)));
+
+    const double alpha = 1.0;
+    const double beta = 0.0;
+    const int m = a_rows;
+    const int k = a_cols;
+    const int n = b_cols;
+
+    CUBLAS_CHECK(
+        cublasDgemm(
+            handle,
+            CUBLAS_OP_N, CUBLAS_OP_N,
+            n, m, k,
+            &alpha,
+            dB, n,
+            dA, k,
+            &beta,
+            dC, n
+        )
+    );
+
+    CUDA_CHECK(cudaMemcpy(c_flat.data(), dC, c_flat.size() * sizeof(double), cudaMemcpyDeviceToHost));
+
+    std::vector<std::vector<double>> result = reshape_to_2d(c_flat, a_rows, b_cols);
+
+
+    return result;
 }
 
 std::vector<std::vector<double>> transpose(const std::vector<std::vector<double>>& matrix) 

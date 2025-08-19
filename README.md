@@ -23,6 +23,17 @@ This project is a full implementation of a **Multi-Layer Perceptron (MLP)** from
 
 ---
 
+## Parallelization
+- **Serial version**: Basic implementation without parallelization.
+- **Parallel version (OpenMP)**: Utilizes OpenMP for parallel execution of matrix operations.
+- **Parallel version (Cuda)**: Leverages CUDA for GPU acceleration of matrix operations.
+- **Conclusion**: The CUDA version is, slower than the OpenMP version on this project, because the overhead of transferring data to and from the GPU outweighs the benefits of parallel execution for this specific workload, since the only parallelized file is Tollkit. If a better speedup is desired, the entire MLP should be parallelized, not just the Toolkit. Also, the architeture of the MLP interfers in what parallelization is more efficient, so the results may vary depending on the architecture used.
+
+---
+## Architecture
+The MLP architecture is defined in the `main.cpp` file, where you can specify the number of layers and neurons per layer. The network is designed to handle various input sizes and can be easily modified for different datasets.
+
+
 ## ⚙️ Build Instructions
 
 **Serial version:**
@@ -33,6 +44,11 @@ make
 **Parallel version (OpenMP):**
 ```bash
 make omp
+```
+
+**Parallel version (Cuda):**
+```bash
+make cuda
 ```
 
 ---

@@ -127,7 +127,6 @@ std::vector<std::vector<double>> elementwise_operation(const std::vector<std::ve
 
     std::vector<std::vector<double>> result(matrix.size(), std::vector<double>(matrix[0].size(), 0.0));
 
-    #pragma omp parallel for num_threads(8) 
     for (size_t i = 0; i < matrix.size(); ++i) 
     {
         for (size_t j = 0; j < matrix[i].size(); ++j) 
@@ -212,7 +211,6 @@ std::vector<std::vector<double>> elementwise_operation(const std::vector<std::ve
 
     std::vector<std::vector<double>> result(a.size(), std::vector<double>(a[0].size(), 0.0));
 
-    #pragma omp parallel for num_threads(8)
     for (size_t i = 0; i < a.size(); ++i) 
     {
         for (size_t j = 0; j < a[i].size(); ++j) 

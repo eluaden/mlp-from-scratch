@@ -54,6 +54,7 @@
         "span": "cpp",
         "sstream": "cpp",
         "variant": "cpp",
-        "fstream": "cpp"
+        "fstream": "cpp",
+        "cstring": "cpp"
     }
 }
